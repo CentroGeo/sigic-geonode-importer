@@ -455,6 +455,10 @@ def copy_geonode_resource(
             **kwargs,
         )
 
+        # Ensure that featured is False
+        new_resource.featured = False
+        new_resource.save()
+
         handler.create_resourcehandlerinfo(
             resource=new_resource,
             handler_module_path=handler_module_path,
