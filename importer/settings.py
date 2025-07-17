@@ -11,7 +11,7 @@ IMPORTER_RESOURCE_CREATION_RATE_LIMIT = os.getenv(
 IMPORTER_RESOURCE_COPY_RATE_LIMIT = os.getenv("IMPORTER_RESOURCE_COPY_RATE_LIMIT", 10)
 
 SYSTEM_HANDLERS = [
-    'importer.handlers.xls.handler.XLSFileHandler'
+    'importer.handlers.xls.handler.XLSFileHandler',
     'importer.handlers.gpkg.handler.GPKGFileHandler',
     'importer.handlers.geojson.handler.GeoJsonFileHandler',
     'importer.handlers.shapefile.handler.ShapeFileHandler',
