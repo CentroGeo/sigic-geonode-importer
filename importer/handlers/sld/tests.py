@@ -8,6 +8,7 @@ from importer.models import ResourceHandlerInfo
 from importer.orchestrator import orchestrator
 from importer.handlers.sld.exceptions import InvalidSldException
 from importer.handlers.sld.handler import SLDFileHandler
+from unittest.mock import patch
 
 
 class TestSLDFileHandler(TestCase):
@@ -88,3 +89,28 @@ class TestSLDFileHandler(TestCase):
 
         self.layer.refresh_from_db()
         self.assertEqual(self.layer.title, "sld_dataset")
+
+    @patch('geonode.resource.manager.resource_manager.exec')
+    def test_import_resource_calls_set_style(self, mock_exec):
+        """
+        Verifica que import_resource invoque resource_manager.exec('set_style',…)
+        """
+        # Preparamos un objeto dummy con la ruta al SLD
+        class Exec:
+            input_params = {
+                'files': {'sld_file': '/tmp/test.sld'}
+            }
+        dummy_exec = Exec()
+        dummy_dataset = object()  # no necesita atributos especiales
+
+        # Ejecutamos el método
+        self.handler.import_resource(dummy_exec, dummy_dataset)
+
+        # Comprobamos la llamada
+        mock_exec.assert_called_once_with(
+            "set_style", None,
+            instance=dummy_dataset,
+            sld_file=dummy_exec.input_params['files']['sld_file'],
+            sld_uploaded=True,
+            vals={"dirty_state": True},
+        )
