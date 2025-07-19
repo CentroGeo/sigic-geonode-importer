@@ -64,9 +64,9 @@ class SLDFileHandler(MetadataFileHandler):
         self.import_resource(_exec, dataset)
     
     def import_resource(self, _exec, dataset):
-    """
-    Carga el SLD en GeoServer y lo asocia como estilo por defecto.
-    """
+        """
+        Carga el SLD en GeoServer y lo asocia como estilo por defecto.
+        """
         files = _exec.input_params.get("files", {})
         sld_path = files.get("sld_file") or _exec.input_params.get("base_file")
 
