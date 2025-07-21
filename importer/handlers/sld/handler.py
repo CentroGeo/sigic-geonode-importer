@@ -20,18 +20,12 @@ class SLDFileHandler(MetadataFileHandler):
             "label": "Styled Layer Descriptor (SLD)",
             "format": "metadata",
             "ext": ["sld"],
-            "mimeType": ["application/json"],
-            "needsFiles": [
-                "shp",
-                "prj",
-                "dbf",
-                "shx",
-                "csv",
-                "tiff",
-                "zip",
-                "xml",
-                "geojson",
+            "mimeType": [
+                "application/xml",
+                "text/xml",
+                "application/vnd.ogc.se_xml"
             ],
+            "needsFiles": [],
         }
 
     @staticmethod
@@ -66,17 +60,21 @@ class SLDFileHandler(MetadataFileHandler):
         return True
 
     def handle_metadata_resource(self, _exec, dataset, original_handler):
-        if original_handler.can_handle_sld_file:
-            original_handler.handle_sld_file(dataset, _exec)
-        else:
-            _path = _exec.input_params.get("files", {}).get(
-                "sld_file", _exec.input_params.get("base_file", {})
-            )
-            resource_manager.exec(
-                "set_style",
-                None,
-                instance=dataset,
-                sld_file=_exec.input_params.get("files", {}).get("sld_file", ""),
-                sld_uploaded=True if _path else False,
-                vals={"dirty_state": True},
-            )
+        # Usamos siempre nuestro flujo import_resource
+        self.import_resource(_exec, dataset)
+    
+    def import_resource(self, _exec, dataset):
+        """
+        Carga el SLD en GeoServer y lo asocia como estilo por defecto.
+        """
+        files = _exec.input_params.get("files", {})
+        sld_path = files.get("sld_file") or _exec.input_params.get("base_file")
+
+        resource_manager.exec(
+            "set_style",
+            None,
+            instance=dataset,
+            sld_file=sld_path,
+            sld_uploaded=bool(sld_path),
+            vals={"dirty_state": True},
+        )
