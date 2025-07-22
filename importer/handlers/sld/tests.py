@@ -91,26 +91,51 @@ class TestSLDFileHandler(TestCase):
         self.assertEqual(self.layer.title, "sld_dataset")
 
     @patch('geonode.resource.manager.resource_manager.exec')
-    def test_import_resource_calls_set_style(self, mock_exec):
+    def test_import_resource_publishes_and_sets_default_when_no_default(self, mock_exec):
         """
-        Verifica que import_resource invoque resource_manager.exec('set_style',…)
+        If no default style exists, should call publish_sld then set_style
         """
-        # Preparamos un objeto dummy con la ruta al SLD
-        class Exec:
-            input_params = {
-                'files': {'sld_file': '/tmp/test.sld'}
-            }
-        dummy_exec = Exec()
-        dummy_dataset = object()  # no necesita atributos especiales
+        class ExecObj:
+            input_params = {'files': {'sld_file': '/tmp/test.sld'}}
+        # Simulate dataset without default style
+        class Styles: default = None
+        dummy_dataset = type("D", (), {"styles": Styles})
 
-        # Ejecutamos el método
-        self.handler.import_resource(dummy_exec, dummy_dataset)
+        self.handler.import_resource(ExecObj(), dummy_dataset)
 
-        # Comprobamos la llamada
-        mock_exec.assert_called_once_with(
+        mock_exec.assert_any_call(
+            "publish_sld", None,
+            instance=dummy_dataset,
+            sld_file='/tmp/test.sld',
+            sld_uploaded=True,
+            vals={"dirty_state": True},
+        )
+        mock_exec.assert_any_call(
             "set_style", None,
             instance=dummy_dataset,
-            sld_file=dummy_exec.input_params['files']['sld_file'],
+            style="test",
+            vals={"dirty_state": True},
+        )
+        self.assertEqual(mock_exec.call_count, 2)
+
+    @patch('geonode.resource.manager.resource_manager.exec')
+    def test_import_resource_only_publishes_when_default_exists(self, mock_exec):
+        """
+        If a default style already exists, should only call publish_sld
+        """
+        class ExecObj:
+            input_params = {'files': {'sld_file': '/tmp/another.sld'}}
+        # Simulate dataset with an existing default style
+        DefaultStyle = type("DS", (), {"name": "existing"})
+        class Styles: default = DefaultStyle
+        dummy_dataset = type("D", (), {"styles": Styles})
+
+        self.handler.import_resource(ExecObj(), dummy_dataset)
+
+        mock_exec.assert_called_once_with(
+            "publish_sld", None,
+            instance=dummy_dataset,
+            sld_file='/tmp/another.sld',
             sld_uploaded=True,
             vals={"dirty_state": True},
         )

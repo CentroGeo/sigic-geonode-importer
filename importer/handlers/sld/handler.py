@@ -1,4 +1,5 @@
 import logging
+import os
 
 from geonode.resource.manager import resource_manager
 from importer.handlers.common.metadata import MetadataFileHandler
@@ -20,12 +21,18 @@ class SLDFileHandler(MetadataFileHandler):
             "label": "Styled Layer Descriptor (SLD)",
             "format": "metadata",
             "ext": ["sld"],
-            "mimeType": [
-                "application/xml",
-                "text/xml",
-                "application/vnd.ogc.se_xml"
+            "mimeType": ["application/json"],
+            "needsFiles": [
+                "shp",
+                "prj",
+                "dbf",
+                "shx",
+                "csv",
+                "tiff",
+                "zip",
+                "xml",
+                "geojson",
             ],
-            "needsFiles": [],
         }
 
     @staticmethod
@@ -65,16 +72,26 @@ class SLDFileHandler(MetadataFileHandler):
     
     def import_resource(self, _exec, dataset):
         """
-        Carga el SLD en GeoServer y lo asocia como estilo por defecto.
+        Publishes the SLD in GeoServer and, if no default, assigns it.
         """
         files = _exec.input_params.get("files", {})
         sld_path = files.get("sld_file") or _exec.input_params.get("base_file")
+        style_name = os.path.splitext(os.path.basename(sld_path))[0]
 
+        # 1) Publish the SLD as an additional style (does not change default)
         resource_manager.exec(
-            "set_style",
-            None,
+            "publish_sld", None,
             instance=dataset,
             sld_file=sld_path,
             sld_uploaded=bool(sld_path),
             vals={"dirty_state": True},
         )
+
+        # 2) If there's no default style yet, assign the new one
+        if not getattr(dataset.styles, "default", None):
+            resource_manager.exec(
+                "set_style", None,
+                instance=dataset,
+                style=style_name,
+                vals={"dirty_state": True},
+            )
