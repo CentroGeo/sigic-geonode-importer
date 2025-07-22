@@ -93,16 +93,15 @@ class SLDFileHandler(MetadataFileHandler):
         )
         logger.warning("[SLD DEBUG] CREATE returned, checking default style")
 
-        # 2) Si NO había default, se mantiene el set_style
+        # 2) Si NO había default, se actualiza el campo default_style
         default_exists = bool(getattr(dataset.styles, "default", None))
         logger.warning(f"[SLD DEBUG] default_exists={default_exists}")
         if not default_exists:
-            logger.warning("[SLD DEBUG] calling resource_manager.exec SET_STYLE")
+            logger.warning("[SLD DEBUG] calling resource_manager.exec UPDATE")
             resource_manager.exec(
-                "set_style", None,
+                "update", None,
                 instance=dataset,
-                style=style_name,
-                vals={"dirty_state": True},
+                vals={"default_style": style_name},
             )
-            logger.warning("[SLD DEBUG] SET_STYLE returned")
+            logger.warning("[SLD DEBUG] UPDATE returned")
         logger.warning("[SLD DEBUG] import_resource END")            
