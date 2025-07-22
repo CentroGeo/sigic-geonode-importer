@@ -103,11 +103,12 @@ class TestSLDFileHandler(TestCase):
 
         self.handler.import_resource(ExecObj(), dummy_dataset)
 
+         # 1) create style resource
         mock_exec.assert_any_call(
-            "publish_sld", None,
+            "create", None,
             instance=dummy_dataset,
-            sld_file='/tmp/test.sld',
-            sld_uploaded=True,
+            resource_type="style",
+            base_file='/tmp/test.sld',
             vals={"dirty_state": True},
         )
         mock_exec.assert_any_call(
@@ -119,7 +120,7 @@ class TestSLDFileHandler(TestCase):
         self.assertEqual(mock_exec.call_count, 2)
 
     @patch('geonode.resource.manager.resource_manager.exec')
-    def test_import_resource_only_publishes_when_default_exists(self, mock_exec):
+    def test_import_resource_only_creates_when_default_exists(self, mock_exec):
         """
         If a default style already exists, should only call publish_sld
         """
@@ -133,9 +134,9 @@ class TestSLDFileHandler(TestCase):
         self.handler.import_resource(ExecObj(), dummy_dataset)
 
         mock_exec.assert_called_once_with(
-            "publish_sld", None,
+            "create", None,
             instance=dummy_dataset,
-            sld_file='/tmp/another.sld',
-            sld_uploaded=True,
+            resource_type="style",
+            base_file='/tmp/another.sld',
             vals={"dirty_state": True},
         )

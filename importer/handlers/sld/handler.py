@@ -78,16 +78,16 @@ class SLDFileHandler(MetadataFileHandler):
         sld_path = files.get("sld_file") or _exec.input_params.get("base_file")
         style_name = os.path.splitext(os.path.basename(sld_path))[0]
 
-        # 1) Publish the SLD as an additional style (does not change default)
+        # 1) Crear el style como recurso nuevo (no toca el default existente)
         resource_manager.exec(
-            "publish_sld", None,
+            "create", None,
             instance=dataset,
-            sld_file=sld_path,
-            sld_uploaded=bool(sld_path),
+            resource_type="style",
+            base_file=sld_path,
             vals={"dirty_state": True},
         )
 
-        # 2) If there's no default style yet, assign the new one
+        # 2) Si NO había default, se mantiene el set_style
         if not getattr(dataset.styles, "default", None):
             resource_manager.exec(
                 "set_style", None,
