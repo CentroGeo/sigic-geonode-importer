@@ -112,10 +112,9 @@ class TestSLDFileHandler(TestCase):
             vals={"dirty_state": True},
         )
         mock_exec.assert_any_call(
-            "set_style", None,
+            "update", None,
             instance=dummy_dataset,
-            style="test",
-            vals={"dirty_state": True},
+            vals={"default_style": "test"},
         )
         self.assertEqual(mock_exec.call_count, 2)
 
