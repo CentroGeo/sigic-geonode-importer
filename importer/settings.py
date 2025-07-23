@@ -23,3 +23,9 @@ SYSTEM_HANDLERS = [
     'importer.handlers.remote.tiles3d.RemoteTiles3DResourceHandler',
     'importer.handlers.remote.wms.RemoteWMSResourceHandler',
 ]
+
+SIGIC_HANDLERS = [
+    'importer.handlers.excel.handler.XLSXFileHandler',
+]
+
+SYSTEM_HANDLERS += SIGIC_HANDLERS
