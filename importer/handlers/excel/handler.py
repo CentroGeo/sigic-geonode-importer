@@ -57,6 +57,20 @@ class XLSXFileHandler(BaseVectorFileHandler):
         ),
     }
 
+    @property
+    def supported_file_extension_config(self):
+        return {
+            "id": "xlsx",
+            "label": "Excel",
+            "format": "vector",
+            "mimeType": [
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.ms-excel",
+            ],
+            "ext": ["xlsx", "xls"],
+            "optional": ["sld", "xml"],
+        }
+
     possible_geometry_column_name = ["geom", "geometry", "wkt_geom", "the_geom"]
     possible_lat_column = ["latitude", "lat", "y"]
     possible_long_column = ["longitude", "long", "x"]
