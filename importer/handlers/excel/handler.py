@@ -155,12 +155,24 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     def is_valid(self, files, user):
         BaseVectorFileHandler.is_valid(files, user)
+
         upload_validator = UploadLimitValidator(user)
         upload_validator.validate_parallelism_limit_per_user()
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
 
         effective_file = self.get_effective_file(files)
+
+        # ✅ Refuerzo de seguridad: asegurar que el archivo tenga un size válido
+        base_file = files.get("base_file")
+        if not hasattr(base_file, "size") or base_file.size is None:
+            try:
+                file_path = getattr(base_file, "file", {}).name or base_file.name
+                base_file.size = os.path.getsize(file_path)
+            except Exception as e:
+                logger.warning(f"No se pudo asegurar el tamaño del archivo en is_valid: {e}")
+                base_file.size = 0
+            files["base_file"] = base_file
 
         try:
             layers = self.get_ogr2ogr_driver().Open(effective_file)
