@@ -101,9 +101,11 @@ class XLSXFileHandler(BaseVectorFileHandler):
         base_file = files.get("base_file")
         if not base_file:
             raise InvalidExcelException("No base_file provided")
-        filename = base_file if isinstance(base_file, str) else base_file.name
 
-        if filename.lower().endswith(".xls"):
+        filename = base_file if isinstance(base_file, str) else getattr(base_file, "name", None)
+
+        # CASO: .xls → convertir a .xlsx
+        if filename and filename.lower().endswith(".xls"):
             converted_path = self.convert_xls_to_xlsx(base_file)
             converted_file = open(converted_path, "rb")
             converted_file.name = converted_path
@@ -111,7 +113,8 @@ class XLSXFileHandler(BaseVectorFileHandler):
             files["base_file"] = converted_file
             return converted_path
 
-        elif filename.lower().endswith(".xlsx"):
+        # CASO: .xlsx
+        elif filename and filename.lower().endswith(".xlsx"):
             if isinstance(base_file, str):
                 size = os.path.getsize(base_file)
                 f = open(base_file, "rb")
@@ -120,15 +123,14 @@ class XLSXFileHandler(BaseVectorFileHandler):
                 files["base_file"] = f
                 return base_file
             else:
-                # Asegurar que base_file.size esté definido
+                # Verificamos y asignamos el size si no está
                 if not hasattr(base_file, "size") or base_file.size is None:
                     try:
                         file_path = getattr(base_file, "file", {}).name or base_file.name
                         base_file.size = os.path.getsize(file_path)
                     except Exception as e:
                         logger.warning(f"No se pudo determinar el tamaño del archivo: {e}")
-                        base_file.size = 0  # valor seguro para evitar NoneType
-
+                        base_file.size = 0  # valor por defecto
                 files["base_file"] = base_file
                 return base_file.name
 
