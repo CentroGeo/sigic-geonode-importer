@@ -104,12 +104,34 @@ class XLSXFileHandler(BaseVectorFileHandler):
             raise InvalidExcelException("No base_file provided")
         filename = base_file if isinstance(base_file, str) else base_file.name
 
+        # Si es .xls → convertir a .xlsx y sustituir en files["base_file"]
         if filename.lower().endswith(".xls"):
-            return self.convert_xls_to_xlsx(base_file)
+            converted_path = self.convert_xls_to_xlsx(base_file)
+            converted_file = open(converted_path, "rb")
+            converted_file.name = converted_path
+            converted_file.size = os.path.getsize(converted_path)
+            files["base_file"] = converted_file
+            return converted_path
+
+        # Si es .xlsx, asegurarse que tenga atributo size
         elif filename.lower().endswith(".xlsx"):
-            return base_file
-        else:
-            raise InvalidExcelException("Unsupported file format. Only .xls and .xlsx are allowed.")
+            if isinstance(base_file, str):
+                size = os.path.getsize(base_file)
+                f = open(base_file, "rb")
+                f.name = base_file
+                f.size = size
+                files["base_file"] = f
+                return base_file
+            else:
+                # file-like object
+                if not hasattr(base_file, "size") and hasattr(base_file, "file"):
+                    try:
+                        base_file.size = os.path.getsize(base_file.file.name)
+                    except Exception:
+                        pass
+                return base_file.name
+
+        raise InvalidExcelException("Unsupported file format. Only .xls and .xlsx are allowed.")
 
     def get_ogr2ogr_driver(self):
         return ogr.GetDriverByName("XLSX")
@@ -138,7 +160,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
         print("upload_validator", upload_validator)
         print("actual_upload", actual_upload)
         print("max_upload", max_upload)
-
 
         effective_file = self.get_effective_file(files)
 
