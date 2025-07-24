@@ -11,14 +11,10 @@ from openpyxl import Workbook
 from geonode.resource.enumerator import ExecutionRequestAction as exa
 from geonode.upload.api.exceptions import UploadParallelismLimitException
 from geonode.upload.utils import UploadLimitValidator
-from importer.celery_tasks import create_dynamic_structure
 from importer.handlers.excel.exceptions import InvalidExcelException
 from osgeo import ogr
-from celery import group
 from geonode.base.models import ResourceBase
-from dynamic_models.models import ModelSchema
 from importer.handlers.common.vector import BaseVectorFileHandler
-from importer.handlers.utils import GEOM_TYPE_MAPPING
 from importer.utils import ImporterRequestAction as ira
 
 logger = logging.getLogger(__name__)
@@ -104,7 +100,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
         filename = base_file if isinstance(base_file, str) else getattr(base_file, "name", None)
 
-        # CASO: .xls → convertir a .xlsx
+        # .xls → convertir
         if filename and filename.lower().endswith(".xls"):
             converted_path = self.convert_xls_to_xlsx(base_file)
             converted_file = open(converted_path, "rb")
@@ -113,26 +109,28 @@ class XLSXFileHandler(BaseVectorFileHandler):
             files["base_file"] = converted_file
             return converted_path
 
-        # CASO: .xlsx
+        # .xlsx
         elif filename and filename.lower().endswith(".xlsx"):
             if isinstance(base_file, str):
-                size = os.path.getsize(base_file)
                 f = open(base_file, "rb")
                 f.name = base_file
-                f.size = size
+                f.size = os.path.getsize(base_file)
                 files["base_file"] = f
-                return base_file
             else:
-                # Verificamos y asignamos el size si no está
+                # Forzar size si falta
                 if not hasattr(base_file, "size") or base_file.size is None:
                     try:
-                        file_path = getattr(base_file, "file", {}).name or base_file.name
-                        base_file.size = os.path.getsize(file_path)
+                        file_path = getattr(base_file, "file", None)
+                        if file_path and hasattr(file_path, "name"):
+                            base_file.size = os.path.getsize(file_path.name)
+                        else:
+                            base_file.size = os.path.getsize(base_file.name)
                     except Exception as e:
-                        logger.warning(f"No se pudo determinar el tamaño del archivo: {e}")
-                        base_file.size = 0  # valor por defecto
+                        logger.warning(f"No se pudo establecer size en .xlsx: {e}")
+                        base_file.size = 0
                 files["base_file"] = base_file
-                return base_file.name
+
+            return getattr(files["base_file"], "name", files["base_file"])
 
         raise InvalidExcelException("Unsupported file format. Only .xls and .xlsx are allowed.")
 
@@ -153,30 +151,31 @@ class XLSXFileHandler(BaseVectorFileHandler):
             + additional_option
         )
 
-    @staticmethod
-    def is_valid(files, user):
-        handler = XLSXFileHandler()
-        BaseVectorFileHandler.is_valid(files, user)
+    def is_valid(self, files, user):
+        BaseVectorFileHandler.is_valid(self, files, user)
 
         upload_validator = UploadLimitValidator(user)
         upload_validator.validate_parallelism_limit_per_user()
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
 
-        effective_file = handler.get_effective_file(files)
+        effective_file = self.get_effective_file(files)
 
         base_file = files.get("base_file")
         if not hasattr(base_file, "size") or base_file.size is None:
             try:
-                file_path = getattr(base_file, "file", {}).name or base_file.name
-                base_file.size = os.path.getsize(file_path)
+                path = getattr(base_file, "file", None)
+                if path and hasattr(path, "name"):
+                    base_file.size = os.path.getsize(path.name)
+                else:
+                    base_file.size = os.path.getsize(base_file.name)
             except Exception as e:
-                logger.warning(f"No se pudo asegurar el tamaño del archivo en is_valid: {e}")
+                logger.warning(f"No se pudo establecer 'size' de base_file: {e}")
                 base_file.size = 0
             files["base_file"] = base_file
 
         try:
-            layers = handler.get_ogr2ogr_driver().Open(effective_file)
+            layers = self.get_ogr2ogr_driver().Open(effective_file)
             if not layers:
                 raise InvalidExcelException("Invalid Excel file")
 
@@ -190,13 +189,8 @@ class XLSXFileHandler(BaseVectorFileHandler):
                     detail=f"Upload would exceed parallel limit ({max_upload})"
                 )
 
-            schema_keys = [x.name.lower() for layer in layers for x in layer.schema]
-            geom_is_in_schema = any(x in schema_keys for x in handler.possible_geometry_column_name)
-            has_lat = any(x in handler.possible_lat_column for x in schema_keys)
-            has_long = any(x in handler.possible_long_column for x in schema_keys)
-
         finally:
-            handler._cleanup_temp_file()
+            self._cleanup_temp_file()
 
         return True
 
