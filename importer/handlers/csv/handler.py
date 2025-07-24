@@ -111,20 +111,6 @@ class CSVFileHandler(BaseVectorFileHandler):
             CSVFileHandler().possible_geometry_column_name
             + CSVFileHandler().possible_latlong_column
         )
-        if has_lat and not has_long:
-            raise InvalidCSVException(
-                f"Longitude is missing. Supported names: {', '.join(CSVFileHandler().possible_long_column)}"
-            )
-
-        if not has_lat and has_long:
-            raise InvalidCSVException(
-                f"Latitude is missing. Supported names: {', '.join(CSVFileHandler().possible_lat_column)}"
-            )
-
-        if not geom_is_in_schema and not has_lat and not has_long:
-            raise InvalidCSVException(
-                f"Not enough geometry field are set. The possibilities are: {','.join(fields)}"
-            )
 
         return True
 

@@ -135,6 +135,11 @@ class XLSXFileHandler(BaseVectorFileHandler):
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
 
+        print("upload_validator", upload_validator)
+        print("actual_upload", actual_upload)
+        print("max_upload", max_upload)
+
+
         effective_file = self.get_effective_file(files)
 
         try:
