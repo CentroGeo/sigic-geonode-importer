@@ -120,11 +120,16 @@ class XLSXFileHandler(BaseVectorFileHandler):
                 files["base_file"] = f
                 return base_file
             else:
-                if not hasattr(base_file, "size") and hasattr(base_file, "file"):
+                # Asegurar que base_file.size esté definido
+                if not hasattr(base_file, "size") or base_file.size is None:
                     try:
-                        base_file.size = os.path.getsize(base_file.file.name)
-                    except Exception:
-                        pass
+                        file_path = getattr(base_file, "file", {}).name or base_file.name
+                        base_file.size = os.path.getsize(file_path)
+                    except Exception as e:
+                        logger.warning(f"No se pudo determinar el tamaño del archivo: {e}")
+                        base_file.size = 0  # valor seguro para evitar NoneType
+
+                files["base_file"] = base_file
                 return base_file.name
 
         raise InvalidExcelException("Unsupported file format. Only .xls and .xlsx are allowed.")
