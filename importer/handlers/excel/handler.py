@@ -153,7 +153,9 @@ class XLSXFileHandler(BaseVectorFileHandler):
             + additional_option
         )
 
-    def is_valid(self, files, user):
+    @staticmethod
+    def is_valid(files, user):
+        handler = XLSXFileHandler()
         BaseVectorFileHandler.is_valid(files, user)
 
         upload_validator = UploadLimitValidator(user)
@@ -161,9 +163,8 @@ class XLSXFileHandler(BaseVectorFileHandler):
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
 
-        effective_file = self.get_effective_file(files)
+        effective_file = handler.get_effective_file(files)
 
-        # ✅ Refuerzo de seguridad: asegurar que el archivo tenga un size válido
         base_file = files.get("base_file")
         if not hasattr(base_file, "size") or base_file.size is None:
             try:
@@ -175,7 +176,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
             files["base_file"] = base_file
 
         try:
-            layers = self.get_ogr2ogr_driver().Open(effective_file)
+            layers = handler.get_ogr2ogr_driver().Open(effective_file)
             if not layers:
                 raise InvalidExcelException("Invalid Excel file")
 
@@ -190,12 +191,12 @@ class XLSXFileHandler(BaseVectorFileHandler):
                 )
 
             schema_keys = [x.name.lower() for layer in layers for x in layer.schema]
-            geom_is_in_schema = any(x in schema_keys for x in self.possible_geometry_column_name)
-            has_lat = any(x in self.possible_lat_column for x in schema_keys)
-            has_long = any(x in self.possible_long_column for x in schema_keys)
+            geom_is_in_schema = any(x in schema_keys for x in handler.possible_geometry_column_name)
+            has_lat = any(x in handler.possible_lat_column for x in schema_keys)
+            has_long = any(x in handler.possible_long_column for x in schema_keys)
 
         finally:
-            self._cleanup_temp_file()
+            handler._cleanup_temp_file()
 
         return True
 
