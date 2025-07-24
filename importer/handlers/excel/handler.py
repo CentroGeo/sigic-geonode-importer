@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 
 def sanitize_name(name: str, max_length: int = 64) -> str:
-    """Limpia nombres para usarlos como identificadores compatibles"""
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
     name = re.sub(r'[^a-zA-Z0-9_]+', '_', name)
     name = name.strip('_').lower()
@@ -34,7 +33,7 @@ def sanitize_name(name: str, max_length: int = 64) -> str:
 
 class XLSXFileHandler(BaseVectorFileHandler):
     """
-    Handler para archivos .xlsx y .xls, incluyendo soporte multihoja y conversión automática
+    Handler para archivos .xlsx y .xls, con soporte multihoja, limpieza de nombres y conversión.
     """
 
     ACTIONS = {
@@ -104,7 +103,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
             raise InvalidExcelException("No base_file provided")
         filename = base_file if isinstance(base_file, str) else base_file.name
 
-        # Si es .xls → convertir a .xlsx y sustituir en files["base_file"]
         if filename.lower().endswith(".xls"):
             converted_path = self.convert_xls_to_xlsx(base_file)
             converted_file = open(converted_path, "rb")
@@ -113,7 +111,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
             files["base_file"] = converted_file
             return converted_path
 
-        # Si es .xlsx, asegurarse que tenga atributo size
         elif filename.lower().endswith(".xlsx"):
             if isinstance(base_file, str):
                 size = os.path.getsize(base_file)
@@ -123,7 +120,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
                 files["base_file"] = f
                 return base_file
             else:
-                # file-like object
                 if not hasattr(base_file, "size") and hasattr(base_file, "file"):
                     try:
                         base_file.size = os.path.getsize(base_file.file.name)
@@ -156,10 +152,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
         upload_validator.validate_parallelism_limit_per_user()
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
-
-        print("upload_validator", upload_validator)
-        print("actual_upload", actual_upload)
-        print("max_upload", max_upload)
 
         effective_file = self.get_effective_file(files)
 
@@ -196,6 +188,16 @@ class XLSXFileHandler(BaseVectorFileHandler):
         filename = base if isinstance(base, str) else base.name
         return filename.lower().endswith((".xlsx", ".xls"))
 
+    def get_base_filename(self, files: dict) -> str:
+        base_file = files.get("base_file")
+        if not base_file:
+            return "archivo"
+
+        filename = base_file if isinstance(base_file, str) else getattr(base_file, "name", "archivo")
+        filename = os.path.basename(filename)
+        filename = os.path.splitext(filename)[0]
+        return sanitize_name(filename)
+
     def extract_resource_to_publish(self, files, action, layer_name, alternate, **kwargs):
         effective_file = self.get_effective_file(files)
 
@@ -209,18 +211,19 @@ class XLSXFileHandler(BaseVectorFileHandler):
         if not layers:
             return []
 
-        base_name = sanitize_name(alternate or layer_name)
+        base_name = self.get_base_filename(files)
 
         if len(layers) == 1:
             return [{
-                "name": base_name,
+                "name": base_name[:64],
                 "crs": self.identify_authority(layers[0]),
             }]
 
         resources = []
         for layer in layers:
             hoja_clean = sanitize_name(layer.GetName())
-            name = sanitize_name(f"{base_name}_{hoja_clean}")
+            combined = f"{base_name}_{hoja_clean}"
+            name = sanitize_name(combined, max_length=64)
             crs = self.identify_authority(layer)
             resources.append({
                 "name": name,
