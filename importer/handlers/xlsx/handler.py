@@ -91,12 +91,12 @@ class XLSXFileHandler(BaseVectorFileHandler):
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
 
-        print("files", files)
-        print("base_file", base_file)
+        logger.info("files", files)
+        logger.info("base_file", base_file)
 
         layers = XLSXFileHandler().get_ogr2ogr_driver().Open(base_file)
 
-        print("layers", layers)
+        logger.info("layers", layers)
 
         if not layers:
             raise Exception("The XLSX provided is invalid, no layers found")
