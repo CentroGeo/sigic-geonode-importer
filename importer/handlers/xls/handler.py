@@ -57,10 +57,11 @@ class XLSFileHandler(BaseVectorFileHandler):
     def supported_file_extension_config(self):
         return {
             "id": "XLS",
-            "label": "Excel (XLS)",
-            "format": "XLS",
+            "label": "Excel 97-2003 (XLS)",
+            "format": "vector",
             "mimetype": "application/vnd.ms-excel",
-            "extension": ".xls"
+            "ext": ["xlsx"],
+            "optional": ["sld", "xml"],
         }
 
     @staticmethod

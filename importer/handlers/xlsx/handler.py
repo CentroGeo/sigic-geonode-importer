@@ -58,9 +58,10 @@ class XLSXFileHandler(BaseVectorFileHandler):
         return {
             "id": "XLSX",
             "label": "Excel (XLSX)",
-            "format": "XLSX",
+            "format": "vector",
             "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "extension": ".xlsx"
+            "ext": ["xlsx"],
+            "optional": ["sld", "xml"],
         }
 
     @staticmethod
