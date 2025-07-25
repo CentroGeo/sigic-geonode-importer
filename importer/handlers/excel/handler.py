@@ -164,15 +164,15 @@ class XLSXFileHandler(BaseVectorFileHandler):
         base_file = files.get("base_file")
         if not hasattr(base_file, "size") or base_file.size is None:
             try:
-                path = getattr(base_file, "file", None)
-                if path and hasattr(path, "name"):
-                    base_file.size = os.path.getsize(path.name)
-                else:
-                    base_file.size = os.path.getsize(base_file.name)
+                # Intentar obtener el tamaño siempre, no solo si no tiene .size
+                file_path = getattr(base_file, "file", {}).name or base_file.name
+                base_file.size = os.path.getsize(file_path)
             except Exception as e:
-                logger.warning(f"No se pudo establecer 'size' de base_file: {e}")
-                base_file.size = 0
-            files["base_file"] = base_file
+                logger.warning(f"No se pudo establecer size en get_effective_file: {e}")
+                base_file.size = 0  # fallback seguro
+
+            files["base_file"] = base_file  # Asegura que el archivo corregido quede en el dict
+            return base_file.name
 
         try:
             layers = self.get_ogr2ogr_driver().Open(effective_file)
