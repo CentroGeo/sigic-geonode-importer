@@ -72,13 +72,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
         # --- PARCHE: forzar que el archivo tenga .size válido ---
         from shutil import copyfileobj
         base_file = files.get("base_file")
-        base_file
-
-        # ✅ Guardar archivo temporalmente en disco
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            copyfileobj(base_file, tmp)
-            tmp_path = tmp.name
-
         if base_file and getattr(base_file, "size", None) in [None, 0]:
             try:
                 if hasattr(base_file, "seek") and hasattr(base_file, "tell"):
@@ -100,11 +93,11 @@ class XLSXFileHandler(BaseVectorFileHandler):
         max_upload = upload_validator._get_max_parallel_uploads()
 
         logger.info("files", files)
-        logger.info("base_file", base_file)
+        logger.info("files.get(base_file)", files.get("base_file"))
 
         # layers = XLSXFileHandler().get_ogr2ogr_driver().Open(files.get("base_file"))
 
-        ds = XLSXFileHandler().get_ogr2ogr_driver().Open(tmp_path)
+        ds = XLSXFileHandler().get_ogr2ogr_driver().Open(files.get("base_file"))
         if ds is None:
             raise Exception("The XLSX provided is invalid or unreadable")
 
