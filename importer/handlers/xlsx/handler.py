@@ -99,7 +99,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
         ds = XLSXFileHandler().get_ogr2ogr_driver().Open(files.get("base_file"))
         if ds is None:
-            raise Exception("The XLSX provided is invalid or unreadable")
+            raise Exception("The XLSX provided is invalid or unreadable", files.get("base_file"), files)
 
         if ds.GetLayerCount() == 0:
             raise Exception("The XLSX file contains no readable layers")
