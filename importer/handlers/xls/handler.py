@@ -26,12 +26,12 @@ def sanitize_name(name: str, max_length: int = 64) -> str:
     return name[:max_length]
 
 
-class XLSXFileHandler(BaseVectorFileHandler):
+class XLSFileHandler(BaseVectorFileHandler):
     """
-    Handler to import .xlsx files as vector datasets into GeoNode
+    Handler to import .xls files as vector datasets into GeoNode
     """
 
-    EXTENSIONS = [".xlsx"]
+    EXTENSIONS = [".xls"]
 
     ACTIONS = {
         exa.IMPORT.value: (
@@ -73,24 +73,24 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
             return True
         except Exception as e:
-            logger.warning(f"XLSX validation failed: {e}")
+            logger.warning(f"XLS validation failed: {e}")
             return False
 
     def get_ogr2ogr_driver(self):
-        return "XLSX"
+        return "XLS"
 
     def create_tasks(self):
         """
-        Creates one task per sheet (layer) in the XLSX file
+        Creates one task per sheet (layer) in the XLS file
         """
         base_file = self.files.get("base_file")
         ds = ogr.Open(base_file)
         if not ds:
-            raise Exception("Could not open XLSX file with OGR")
+            raise Exception("Could not open XLS file with OGR")
 
         layer_count = ds.GetLayerCount()
         if layer_count == 0:
-            raise Exception("No sheets found in the XLSX file")
+            raise Exception("No sheets found in the XLS file")
 
         UploadLimitValidator(self.user).validate_files_sum_of_sizes(self.storage_manager.data_retriever)
         UploadLimitValidator(self.user).validate_parallelism(layer_count)
