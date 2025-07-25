@@ -91,7 +91,12 @@ class XLSXFileHandler(BaseVectorFileHandler):
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
 
-        layers = XLSXFileHandler().get_ogr2ogr_driver().Open(files.get("base_file"))
+        print("files", files)
+        print("base_file", base_file)
+
+        layers = XLSXFileHandler().get_ogr2ogr_driver().Open(base_file)
+
+        print("layers", layers)
 
         if not layers:
             raise Exception("The XLSX provided is invalid, no layers found")
@@ -227,11 +232,10 @@ class XLSXFileHandler(BaseVectorFileHandler):
         layers = self.get_ogr2ogr_driver().Open(files.get("base_file"), 0)
         if not layers:
             return []
-
         return [
             {
                 "name": alternate or layer_name,
-                "crs": self.identify_authority(_l),
+                "crs": (self.identify_authority(_l)),
             }
             for _l in layers
             if self.fixup_name(_l.GetName()) == layer_name
@@ -239,6 +243,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     def identify_authority(self, layer):
         try:
-            return super().identify_authority(layer=layer)
+            authority_code = super().identify_authority(layer=layer)
+            return authority_code
         except Exception:
             return "EPSG:4326"
