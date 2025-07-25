@@ -94,7 +94,17 @@ class XLSXFileHandler(BaseVectorFileHandler):
         logger.info("files", files)
         logger.info("base_file", base_file)
 
-        layers = XLSXFileHandler().get_ogr2ogr_driver().Open(base_file)
+        # layers = XLSXFileHandler().get_ogr2ogr_driver().Open(base_file)
+
+        ds = XLSXFileHandler().get_ogr2ogr_driver().Open(base_file)
+        if ds is None:
+            raise Exception("The XLSX provided is invalid or unreadable")
+
+        if ds.GetLayerCount() == 0:
+            raise Exception("The XLSX file contains no readable layers")
+
+        # Opcionalmente puedes recuperar las capas
+        layers = [ds.GetLayerByIndex(i) for i in range(ds.GetLayerCount())]
 
         logger.info("layers", layers)
 
@@ -218,27 +228,25 @@ class XLSXFileHandler(BaseVectorFileHandler):
         self, files, action, layer_name, alternate, **kwargs
     ):
         if action == exa.COPY.value:
+            resource = ResourceBase.objects.filter(alternate__istartswith=layer_name).first()
             return [
                 {
                     "name": alternate,
-                    "crs": ResourceBase.objects.filter(
-                        alternate__istartswith=layer_name
-                    )
-                    .first()
-                    .srid,
+                    "crs": resource.srid if resource and resource.srid else "EPSG:4326",
                 }
             ]
 
-        layers = self.get_ogr2ogr_driver().Open(files.get("base_file"), 0)
-        if not layers:
+        ds = self.get_ogr2ogr_driver().Open(files.get("base_file"), 0)
+        if ds is None or ds.GetLayerCount() == 0:
             return []
+
         return [
             {
                 "name": alternate or layer_name,
-                "crs": (self.identify_authority(_l)),
+                "crs": self.identify_authority(ds.GetLayerByIndex(i)),
             }
-            for _l in layers
-            if self.fixup_name(_l.GetName()) == layer_name
+            for i in range(ds.GetLayerCount())
+            if self.fixup_name(ds.GetLayerByIndex(i).GetName()) == layer_name
         ]
 
     def identify_authority(self, layer):
