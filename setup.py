@@ -41,5 +41,7 @@ setup(
         "geonode-django-dynamic-model==0.4.0",
         "pandas",
         "openpyxl",
+        "xlrd",
+        "xlsxwriter"
     ],
 )

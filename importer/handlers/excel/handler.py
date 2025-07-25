@@ -3,33 +3,33 @@ import os
 import re
 import tempfile
 import unicodedata
-import atexit
 
 import pandas as pd
+from openpyxl import load_workbook
 from openpyxl import Workbook
+from xlrd import open_workbook
+from django.core.files.uploadedfile import InMemoryUploadedFile
+import io
 
 from geonode.resource.enumerator import ExecutionRequestAction as exa
 from geonode.upload.api.exceptions import UploadParallelismLimitException
 from geonode.upload.utils import UploadLimitValidator
+from importer.celery_tasks import create_dynamic_structure
 from importer.handlers.excel.exceptions import InvalidExcelException
 from osgeo import ogr
+from celery import group
 from geonode.base.models import ResourceBase
+from dynamic_models.models import ModelSchema
 from importer.handlers.common.vector import BaseVectorFileHandler
+from importer.handlers.utils import GEOM_TYPE_MAPPING
 from importer.utils import ImporterRequestAction as ira
 
 logger = logging.getLogger(__name__)
 
 
-def sanitize_name(name: str, max_length: int = 64) -> str:
-    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
-    name = re.sub(r'[^a-zA-Z0-9_]+', '_', name)
-    name = name.strip('_').lower()
-    return name[:max_length]
-
-
 class XLSXFileHandler(BaseVectorFileHandler):
     """
-    Handler para archivos .xlsx y .xls, con soporte multihoja, limpieza de nombres y conversión.
+    Handler to import XLSX (or XLS converted) files into GeoNode
     """
 
     ACTIONS = {
@@ -63,188 +63,181 @@ class XLSXFileHandler(BaseVectorFileHandler):
                 "application/vnd.ms-excel",
             ],
             "ext": ["xlsx", "xls"],
-            "optional": ["sld", "xml"],
         }
-
-    possible_geometry_column_name = ["geom", "geometry", "wkt_geom", "the_geom"]
-    possible_lat_column = ["latitude", "lat", "y"]
-    possible_long_column = ["longitude", "long", "x"]
-    possible_latlong_column = possible_lat_column + possible_long_column
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._temp_xlsx_file = None
-        atexit.register(self._cleanup_temp_file)
-
-    def _cleanup_temp_file(self):
-        if self._temp_xlsx_file and os.path.exists(self._temp_xlsx_file):
-            try:
-                os.remove(self._temp_xlsx_file)
-                logger.info(f"Temporary XLSX file removed: {self._temp_xlsx_file}")
-            except Exception as e:
-                logger.warning(f"Could not remove temporary file: {e}")
-            self._temp_xlsx_file = None
-
-    def convert_xls_to_xlsx(self, xls_path: str) -> str:
-        df = pd.read_excel(xls_path)
-        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        df.to_excel(temp.name, index=False, engine="openpyxl")
-        self._temp_xlsx_file = temp.name
-        logger.info(f"Converted XLS to XLSX: {temp.name}")
-        return temp.name
-
-    def get_effective_file(self, files: dict) -> str:
-        base_file = files.get("base_file")
-        if not base_file:
-            raise InvalidExcelException("No base_file provided")
-
-        filename = base_file if isinstance(base_file, str) else getattr(base_file, "name", None)
-
-        # .xls → convertir
-        if filename and filename.lower().endswith(".xls"):
-            converted_path = self.convert_xls_to_xlsx(base_file)
-            converted_file = open(converted_path, "rb")
-            converted_file.name = converted_path
-            converted_file.size = os.path.getsize(converted_path)
-            files["base_file"] = converted_file
-            return converted_path
-
-        # .xlsx
-        elif filename and filename.lower().endswith(".xlsx"):
-            if isinstance(base_file, str):
-                f = open(base_file, "rb")
-                f.name = base_file
-                f.size = os.path.getsize(base_file)
-                files["base_file"] = f
-            else:
-                # Forzar size si falta
-                if not hasattr(base_file, "size") or base_file.size is None:
-                    try:
-                        file_path = getattr(base_file, "file", None)
-                        if file_path and hasattr(file_path, "name"):
-                            base_file.size = os.path.getsize(file_path.name)
-                        else:
-                            base_file.size = os.path.getsize(base_file.name)
-                    except Exception as e:
-                        logger.warning(f"No se pudo establecer size en .xlsx: {e}")
-                        base_file.size = 0
-                files["base_file"] = base_file
-
-            return getattr(files["base_file"], "name", files["base_file"])
-
-        raise InvalidExcelException("Unsupported file format. Only .xls and .xlsx are allowed.")
-
-    def get_ogr2ogr_driver(self):
-        return ogr.GetDriverByName("XLSX")
-
-    def create_ogr2ogr_command(self, files, original_name, overwrite_layer, alternate):
-        base_command = BaseVectorFileHandler.create_ogr2ogr_command(
-            files, original_name, overwrite_layer, alternate
-        )
-        additional_option = (
-            ' -oo "GEOM_POSSIBLE_NAMES=geom*,the_geom*,wkt_geom"'
-            ' -oo "X_POSSIBLE_NAMES=x,long*"'
-            ' -oo "Y_POSSIBLE_NAMES=y,lat*"'
-        )
-        return (
-            f"{base_command} -oo KEEP_GEOM_COLUMNS=NO -lco GEOMETRY_NAME={self.default_geometry_column_name} "
-            + additional_option
-        )
-
-    def is_valid(self, files, user):
-        BaseVectorFileHandler.is_valid(self, files, user)
-
-        upload_validator = UploadLimitValidator(user)
-        upload_validator.validate_parallelism_limit_per_user()
-        actual_upload = upload_validator._get_parallel_uploads_count()
-        max_upload = upload_validator._get_max_parallel_uploads()
-
-        effective_file = self.get_effective_file(files)
-
-        base_file = files.get("base_file")
-        if not hasattr(base_file, "size") or base_file.size is None:
-            try:
-                # Intentar obtener el tamaño siempre, no solo si no tiene .size
-                file_path = getattr(base_file, "file", {}).name or base_file.name
-                base_file.size = os.path.getsize(file_path)
-            except Exception as e:
-                logger.warning(f"No se pudo establecer size en get_effective_file: {e}")
-                base_file.size = 0  # fallback seguro
-
-            files["base_file"] = base_file  # Asegura que el archivo corregido quede en el dict
-            return base_file.name
-
-        try:
-            layers = self.get_ogr2ogr_driver().Open(effective_file)
-            if not layers:
-                raise InvalidExcelException("Invalid Excel file")
-
-            layers_count = len(layers)
-            if layers_count >= max_upload:
-                raise UploadParallelismLimitException(
-                    detail=f"Too many layers ({layers_count}). Max allowed: {max_upload}"
-                )
-            elif layers_count + actual_upload >= max_upload:
-                raise UploadParallelismLimitException(
-                    detail=f"Upload would exceed parallel limit ({max_upload})"
-                )
-
-        finally:
-            self._cleanup_temp_file()
-
-        return True
 
     @staticmethod
     def can_handle(_data) -> bool:
         base = _data.get("base_file")
         if not base:
             return False
-        filename = base if isinstance(base, str) else base.name
-        return filename.lower().endswith((".xlsx", ".xls"))
+        return (
+            base.lower().endswith((".xls", ".xlsx"))
+            if isinstance(base, str)
+            else base.name.lower().endswith((".xls", ".xlsx"))
+        )
 
-    def get_base_filename(self, files: dict) -> str:
-        base_file = files.get("base_file")
-        if not base_file:
-            return "archivo"
+    @staticmethod
+    def is_valid(files, user):
+        # Validación base
+        BaseVectorFileHandler.is_valid(files, user)
+        upload_validator = UploadLimitValidator(user)
+        upload_validator.validate_parallelism_limit_per_user()
 
-        filename = base_file if isinstance(base_file, str) else getattr(base_file, "name", "archivo")
-        filename = os.path.basename(filename)
-        filename = os.path.splitext(filename)[0]
-        return sanitize_name(filename)
+        file_obj = files.get("base_file")
+        if not file_obj:
+            raise InvalidExcelException("No file provided")
 
-    def extract_resource_to_publish(self, files, action, layer_name, alternate, **kwargs):
-        effective_file = self.get_effective_file(files)
+        filename = file_obj.name.lower()
 
+        # Conversión de .xls a .xlsx
+        if filename.endswith(".xls") and not filename.endswith(".xlsx"):
+            book = open_workbook(file_contents=file_obj.read())
+            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+            workbook = Workbook()
+            sheet = workbook.active
+            old_sheet = book.sheet_by_index(0)
+
+            for row_idx in range(old_sheet.nrows):
+                row = [old_sheet.cell_value(row_idx, col) for col in range(old_sheet.ncols)]
+                sheet.append(row)
+
+            workbook.save(temp.name)
+            temp.flush()
+
+            with open(temp.name, "rb") as converted:
+                content = converted.read()
+                file_io = io.BytesIO(content)
+                file_io.name = temp.name
+                size = len(content)
+                uploaded_file = InMemoryUploadedFile(
+                    file_io,
+                    field_name=None,
+                    name=os.path.basename(temp.name),
+                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    size=size,
+                    charset=None,
+                )
+                uploaded_file.size = size  # Evita el NoneType
+                files["base_file"] = uploaded_file
+
+        # Validación del archivo convertido
+        try:
+            pd.read_excel(files.get("base_file"), sheet_name=None)
+        except Exception as e:
+            raise InvalidExcelException(f"Error parsing Excel file: {str(e)}")
+
+        return True
+
+    def get_ogr2ogr_driver(self):
+        return ogr.GetDriverByName("XLSX")
+
+    @staticmethod
+    def create_ogr2ogr_command(files, original_name, ovverwrite_layer, alternate):
+        base_command = BaseVectorFileHandler.create_ogr2ogr_command(
+            files, original_name, ovverwrite_layer, alternate
+        )
+        return f"{base_command} -lco GEOMETRY_NAME={BaseVectorFileHandler().default_geometry_column_name}"
+
+    def create_dynamic_model_fields(
+        self,
+        layer: str,
+        dynamic_model_schema: ModelSchema,
+        overwrite: bool,
+        execution_id: str,
+        layer_name: str,
+    ):
+        layer_schema = [
+            {"name": x.name.lower(), "class_name": self._get_type(x), "null": True}
+            for x in layer.schema
+        ]
+
+        if (
+            layer.GetGeometryColumn()
+            or self.default_geometry_column_name
+            and ogr.GeometryTypeToName(layer.GetGeomType())
+            not in ["Geometry Collection", "Unknown (any)"]
+        ):
+            schema_keys = [x["name"] for x in layer_schema]
+            geom_is_in_schema = (
+                x in schema_keys for x in self.possible_geometry_column_name
+            )
+            if (
+                any(geom_is_in_schema) and layer.GetGeomType() == 100
+            ):
+                field_name = [
+                    x for x in self.possible_geometry_column_name if x in schema_keys
+                ][0]
+                index = layer.GetFeature(1).keys().index(field_name)
+                geom = [x for x in layer.GetFeature(1)][index]
+                class_name = GEOM_TYPE_MAPPING.get(
+                    self.promote_to_multi(geom.split("(")[0].replace(" ", "").title())
+                )
+                layer_schema = [x for x in layer_schema if field_name not in x["name"]]
+            elif any(x in self.possible_latlong_column for x in schema_keys):
+                class_name = GEOM_TYPE_MAPPING.get(self.promote_to_multi("Point"))
+            else:
+                class_name = GEOM_TYPE_MAPPING.get(
+                    self.promote_to_multi(ogr.GeometryTypeToName(layer.GetGeomType()))
+                )
+
+            layer_schema += [
+                {
+                    "name": layer.GetGeometryColumn()
+                    or self.default_geometry_column_name,
+                    "class_name": class_name,
+                    "dim": (
+                        2
+                        if not ogr.GeometryTypeToName(layer.GetGeomType())
+                        .lower()
+                        .startswith("3d")
+                        else 3
+                    ),
+                }
+            ]
+
+        list_chunked = [
+            layer_schema[i : i + 30] for i in range(0, len(layer_schema), 30)
+        ]
+
+        celery_group = group(
+            create_dynamic_structure.s(
+                execution_id, schema, dynamic_model_schema.id, overwrite, layer_name
+            )
+            for schema in list_chunked
+        )
+
+        return dynamic_model_schema, celery_group
+
+    def extract_resource_to_publish(
+        self, files, action, layer_name, alternate, **kwargs
+    ):
         if action == exa.COPY.value:
-            return [{
-                "name": alternate,
-                "crs": ResourceBase.objects.filter(alternate__istartswith=layer_name).first().srid,
-            }]
+            return [
+                {
+                    "name": alternate,
+                    "crs": ResourceBase.objects.filter(
+                        alternate__istartswith=layer_name
+                    )
+                    .first()
+                    .srid,
+                }
+            ]
 
-        layers = self.get_ogr2ogr_driver().Open(effective_file, 0)
+        layers = self.get_ogr2ogr_driver().Open(files.get("base_file"), 0)
         if not layers:
             return []
+        return [
+            {
+                "name": alternate or layer_name,
+                "crs": (self.identify_authority(_l)),
+            }
+            for _l in layers
+            if self.fixup_name(_l.GetName()) == layer_name
+        ]
 
-        base_name = self.get_base_filename(files)
-
-        if len(layers) == 1:
-            return [{
-                "name": base_name[:64],
-                "crs": self.identify_authority(layers[0]),
-            }]
-
-        resources = []
-        for layer in layers:
-            hoja_clean = sanitize_name(layer.GetName())
-            combined = f"{base_name}_{hoja_clean}"
-            name = sanitize_name(combined, max_length=64)
-            crs = self.identify_authority(layer)
-            resources.append({
-                "name": name,
-                "crs": crs,
-            })
-
-        return resources
-
-    create_dynamic_model_fields = BaseVectorFileHandler.create_dynamic_model_fields
-    identify_authority = BaseVectorFileHandler.identify_authority
+    def identify_authority(self, layer):
+        try:
+            authority_code = super().identify_authority(layer=layer)
+            return authority_code
+        except Exception:
+            return "EPSG:4326"
