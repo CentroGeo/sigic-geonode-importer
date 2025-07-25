@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 def patch_uploaded_file_size():
     """
-    Parchea UploadLimitValidator._get_uploaded_files_total_size para soportar DataRetriever
-    incluso si no tiene métodos como `get_file_list()`, usando su protocolo de diccionario.
+    Parchea UploadLimitValidator._get_uploaded_files_total_size para que funcione
+    con objetos DataRetriever que no son iterables ni dicts clásicos.
     """
     try:
         from geonode.upload import utils
@@ -17,7 +17,7 @@ def patch_uploaded_file_size():
             fixed_sizes = []
 
             try:
-                for file_id in data_retriever:
+                for file_id in data_retriever.keys():  # ✅ compatible con GeoNode
                     f = data_retriever[file_id]
                     size = getattr(f, "size", None)
 
@@ -45,12 +45,10 @@ def patch_uploaded_file_size():
             return sum(fixed_sizes)
 
         utils.UploadLimitValidator._get_uploaded_files_total_size = patched_get_uploaded_files_total_size
-        logger.info("✅ Patch aplicado: validación robusta de tamaño de archivos.")
+        logger.info("✅ Patch aplicado: soporte robusto para archivos sin `.size`.")
 
     except Exception as e:
         logger.error(f"❌ Falló el parche de validación de tamaño: {e}")
 
 
 patch_uploaded_file_size()
-
-# El handler ya está registrado en SYSTEM_HANDLERS
