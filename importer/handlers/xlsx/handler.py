@@ -74,28 +74,49 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
         file_path = files["base_file"]
         try:
-            ds = ogr.Open(file_path)
+            BaseVectorFileHandler.is_valid(files, user)
+
+            upload_validator = UploadLimitValidator(user)
+            upload_validator.validate_parallelism_limit_per_user()
+
+            actual_upload = upload_validator._get_parallel_uploads_count()
+            max_upload = upload_validator._get_max_parallel_uploads()
+
+            driver = XLSXFileHandler().get_ogr2ogr_driver()
+            ds = driver.Open(file_path)
+
             if not ds:
+                logger.warning("[XLSX] OGR failed to open file")
                 return False
 
-            num_layers = ds.GetLayerCount()
-            if num_layers == 0:
+            layers_count = ds.GetLayerCount()
+            if layers_count == 0:
+                logger.warning("[XLSX] No layers in file")
                 return False
+
+            if layers_count >= max_upload:
+                raise UploadParallelismLimitException(
+                    detail=f"The number of sheets in the Excel file ({layers_count}) exceeds the upload limit ({max_upload})"
+                )
+            elif layers_count + actual_upload >= max_upload:
+                raise UploadParallelismLimitException(
+                    detail=f"Uploading this file would exceed your max parallel upload limit ({max_upload})"
+                )
 
             return True
         except Exception as e:
-            logger.warning(f"XLSX validation failed: {e}")
+            logger.exception("[XLSX] Validation error")
             return False
 
     def get_ogr2ogr_driver(self):
-        return "XLSX"
+        return ogr.GetDriverByName("XLSX")
 
     def create_tasks(self):
         """
         Creates one task per sheet (layer) in the XLSX file
         """
         base_file = self.files.get("base_file")
-        ds = ogr.Open(base_file)
+        ds = self.get_ogr2ogr_driver().Open(base_file)
         if not ds:
             raise Exception("Could not open XLSX file with OGR")
 
