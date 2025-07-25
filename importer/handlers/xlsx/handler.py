@@ -69,6 +69,13 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     @staticmethod
     def is_valid(files, user):
+
+        logger.debug("Validando archivo XLSX")
+        logger.debug(f"files: {files}")
+        logger.debug(f"user: {user}")
+        logger.debug(f"user.username: {getattr(user, 'username', None)}")
+        logger.debug(f"base_file: {files.get('base_file')}")
+
         # --- PARCHE: forzar que el archivo tenga .size válido ---
         from shutil import copyfileobj
         base_file = files.get("base_file")
