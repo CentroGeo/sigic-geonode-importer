@@ -56,7 +56,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
     @property
     def supported_file_extension_config(self):
         return {
-            "id": "XLSX",
+            "id": "xlsx",
             "label": "Excel (XLSX)",
             "format": "vector",
             "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

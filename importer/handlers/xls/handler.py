@@ -56,11 +56,11 @@ class XLSFileHandler(BaseVectorFileHandler):
     @property
     def supported_file_extension_config(self):
         return {
-            "id": "XLS",
+            "id": "xls",
             "label": "Excel 97-2003 (XLS)",
             "format": "vector",
             "mimetype": "application/vnd.ms-excel",
-            "ext": ["xlsx"],
+            "ext": ["xls"],
             "optional": ["sld", "xml"],
         }
 
