@@ -69,6 +69,22 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     @staticmethod
     def is_valid(files, user):
+        # --- PARCHE: forzar que el archivo tenga .size válido ---
+        base_file = files.get("base_file")
+        if base_file and getattr(base_file, "size", None) in [None, 0]:
+            try:
+                if hasattr(base_file, "seek") and hasattr(base_file, "tell"):
+                    current_pos = base_file.tell()
+                    base_file.seek(0, 2)  # Final
+                    file_size = base_file.tell()
+                    base_file.seek(current_pos)  # Restaurar posición
+                    # Forzar seteo de .size si no existe (algunos tipos lo permiten)
+                    if hasattr(base_file, "__dict__"):
+                        base_file.size = file_size
+            except Exception as e:
+                logger.warning(f"Could not force size on uploaded file: {e}")
+        # --- FIN DEL PARCHE ---
+
         BaseVectorFileHandler.is_valid(files, user)
         upload_validator = UploadLimitValidator(user)
         upload_validator.validate_parallelism_limit_per_user()
