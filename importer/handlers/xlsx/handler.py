@@ -1,8 +1,4 @@
 import logging
-import tempfile
-import atexit
-import os
-from shutil import copyfileobj
 
 from geonode.resource.enumerator import ExecutionRequestAction as exa
 from geonode.upload.api.exceptions import UploadParallelismLimitException
@@ -72,27 +68,30 @@ class XLSXFileHandler(BaseVectorFileHandler):
         )
 
     @staticmethod
-    def get_physical_file_path(uploaded_file):
-        """
-        Asegura que el archivo subido esté disponible como archivo físico .xlsx
-        y devuelve su ruta absoluta.
-        """
-        if hasattr(uploaded_file, "temporary_file_path"):
-            return uploaded_file.temporary_file_path()
-
-        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
-        copyfileobj(uploaded_file, tmp)
-        tmp.flush()
-        tmp_path = tmp.name
-        tmp.close()
-
-        atexit.register(lambda: os.path.exists(tmp_path) and os.remove(tmp_path))
-        return tmp_path
-
-    @staticmethod
     def is_valid(files, user):
+        # --- PARCHE: forzar que el archivo tenga .size válido ---
+        from shutil import copyfileobj
         base_file = files.get("base_file")
-        tmp_path = XLSXFileHandler.get_physical_file_path(base_file)
+        base_file
+
+        # ✅ Guardar archivo temporalmente en disco
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            copyfileobj(base_file, tmp)
+            tmp_path = tmp.name
+
+        if base_file and getattr(base_file, "size", None) in [None, 0]:
+            try:
+                if hasattr(base_file, "seek") and hasattr(base_file, "tell"):
+                    current_pos = base_file.tell()
+                    base_file.seek(0, 2)  # Final
+                    file_size = base_file.tell()
+                    base_file.seek(current_pos)  # Restaurar posición
+                    # Forzar seteo de .size si no existe (algunos tipos lo permiten)
+                    if hasattr(base_file, "__dict__"):
+                        base_file.size = file_size
+            except Exception as e:
+                logger.warning(f"Could not force size on uploaded file: {e}")
+        # --- FIN DEL PARCHE ---
 
         BaseVectorFileHandler.is_valid(files, user)
         upload_validator = UploadLimitValidator(user)
@@ -100,22 +99,50 @@ class XLSXFileHandler(BaseVectorFileHandler):
         actual_upload = upload_validator._get_parallel_uploads_count()
         max_upload = upload_validator._get_max_parallel_uploads()
 
+        logger.info("files", files)
+        logger.info("base_file", base_file)
+
+        # layers = XLSXFileHandler().get_ogr2ogr_driver().Open(files.get("base_file"))
+
         ds = XLSXFileHandler().get_ogr2ogr_driver().Open(tmp_path)
         if ds is None:
             raise Exception("The XLSX provided is invalid or unreadable")
 
-        layers_count = ds.GetLayerCount()
-        if layers_count == 0:
+        if ds.GetLayerCount() == 0:
             raise Exception("The XLSX file contains no readable layers")
+
+        # Opcionalmente puedes recuperar las capas
+        layers = [ds.GetLayerByIndex(i) for i in range(ds.GetLayerCount())]
+
+        logger.info("layers", layers)
+
+        if not layers:
+            raise Exception("The XLSX provided is invalid, no layers found")
+
+        layers_count = len(layers)
 
         if layers_count >= max_upload:
             raise UploadParallelismLimitException(
-                detail=f"The number of layers in the XLSX ({layers_count}) exceeds the limit ({max_upload})"
+                detail=f"The number of layers in the XLSX {layers_count} is greater than "
+                f"the max parallel upload permitted: {max_upload} "
+                f"please upload a smaller file"
             )
         elif layers_count + actual_upload >= max_upload:
             raise UploadParallelismLimitException(
-                detail=f"Uploading {layers_count} layers would exceed your parallel upload limit ({max_upload})"
+                detail=f"With the provided XLSX, the number of max parallel upload will exceed the limit of {max_upload}"
             )
+
+        schema_keys = [x.name.lower() for layer in layers for x in layer.schema]
+        geom_is_in_schema = any(
+            x in schema_keys for x in XLSXFileHandler().possible_geometry_column_name
+        )
+        has_lat = any(x in XLSXFileHandler().possible_lat_column for x in schema_keys)
+        has_long = any(x in XLSXFileHandler().possible_long_column for x in schema_keys)
+
+        fields = (
+            XLSXFileHandler().possible_geometry_column_name
+            + XLSXFileHandler().possible_latlong_column
+        )
 
         return True
 
@@ -124,13 +151,17 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     @staticmethod
     def create_ogr2ogr_command(files, original_name, ovverwrite_layer, alternate):
+        """
+        Define the ogr2ogr command to be executed.
+        This is a default command that is needed to import a vector file
+        """
         base_command = BaseVectorFileHandler.create_ogr2ogr_command(
             files, original_name, ovverwrite_layer, alternate
         )
         additional_option = ' -oo "GEOM_POSSIBLE_NAMES=geom*,the_geom*,wkt_geom" -oo "X_POSSIBLE_NAMES=x,long*" -oo "Y_POSSIBLE_NAMES=y,lat*"'
         return (
-            f"{base_command} -oo KEEP_GEOM_COLUMNS=NO -lco GEOMETRY_NAME={BaseVectorFileHandler().default_geometry_column_name} "
-            + additional_option
+                f"{base_command} -oo KEEP_GEOM_COLUMNS=NO -lco GEOMETRY_NAME={BaseVectorFileHandler().default_geometry_column_name} "
+                + additional_option
         )
 
     def create_dynamic_model_fields(
@@ -213,8 +244,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
                 }
             ]
 
-        tmp_path = self.get_physical_file_path(files.get("base_file"))
-        ds = self.get_ogr2ogr_driver().Open(tmp_path, 0)
+        ds = self.get_ogr2ogr_driver().Open(files.get("base_file"), 0)
         if ds is None or ds.GetLayerCount() == 0:
             return []
 
@@ -229,6 +259,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     def identify_authority(self, layer):
         try:
-            return super().identify_authority(layer=layer)
+            authority_code = super().identify_authority(layer=layer)
+            return authority_code
         except Exception:
             return "EPSG:4326"
