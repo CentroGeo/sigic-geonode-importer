@@ -1,21 +1,9 @@
 import logging
-import os
-import re
-import tempfile
-import unicodedata
-
-import pandas as pd
-from openpyxl import load_workbook
-from openpyxl import Workbook
-from xlrd import open_workbook
-from django.core.files.uploadedfile import InMemoryUploadedFile
-import io
 
 from geonode.resource.enumerator import ExecutionRequestAction as exa
 from geonode.upload.api.exceptions import UploadParallelismLimitException
 from geonode.upload.utils import UploadLimitValidator
 from importer.celery_tasks import create_dynamic_structure
-from importer.handlers.excel.exceptions import InvalidExcelException
 from osgeo import ogr
 from celery import group
 from geonode.base.models import ResourceBase
@@ -29,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class XLSXFileHandler(BaseVectorFileHandler):
     """
-    Handler to import XLSX (or XLS converted) files into GeoNode
+    Handler to import XLSX files into GeoNode data db
     """
 
     ACTIONS = {
@@ -52,17 +40,20 @@ class XLSXFileHandler(BaseVectorFileHandler):
         ),
     }
 
+    possible_geometry_column_name = ["geom", "geometry", "wkt_geom", "the_geom"]
+    possible_lat_column = ["latitude", "lat", "y"]
+    possible_long_column = ["longitude", "long", "x"]
+    possible_latlong_column = possible_lat_column + possible_long_column
+
     @property
     def supported_file_extension_config(self):
         return {
             "id": "xlsx",
-            "label": "Excel",
+            "label": "XLSX",
             "format": "vector",
-            "mimeType": [
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "application/vnd.ms-excel",
-            ],
-            "ext": ["xlsx", "xls"],
+            "mimeType": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+            "ext": ["xlsx"],
+            "optional": [],
         }
 
     @staticmethod
@@ -71,60 +62,51 @@ class XLSXFileHandler(BaseVectorFileHandler):
         if not base:
             return False
         return (
-            base.lower().endswith((".xls", ".xlsx"))
+            base.lower().endswith(".xlsx")
             if isinstance(base, str)
-            else base.name.lower().endswith((".xls", ".xlsx"))
+            else base.name.lower().endswith(".xlsx")
         )
 
     @staticmethod
     def is_valid(files, user):
-        # Validación base
+        # Forzar cálculo de tamaño si es necesario
+        base_file = files.get("base_file")
+        if hasattr(base_file, "seek") and hasattr(base_file, "tell"):
+            current = base_file.tell()
+            base_file.seek(0, 2)
+            _ = base_file.tell()
+            base_file.seek(current)
+
         BaseVectorFileHandler.is_valid(files, user)
         upload_validator = UploadLimitValidator(user)
         upload_validator.validate_parallelism_limit_per_user()
+        actual_upload = upload_validator._get_parallel_uploads_count()
+        max_upload = upload_validator._get_max_parallel_uploads()
 
-        file_obj = files.get("base_file")
-        if not file_obj:
-            raise InvalidExcelException("No file provided")
+        layers = XLSXFileHandler().get_ogr2ogr_driver().Open(files.get("base_file"))
 
-        filename = file_obj.name.lower()
+        if not layers:
+            raise Exception("The XLSX provided is invalid, no layers found")
 
-        # Conversión de .xls a .xlsx
-        if filename.endswith(".xls") and not filename.endswith(".xlsx"):
-            book = open_workbook(file_contents=file_obj.read())
-            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-            workbook = Workbook()
-            sheet = workbook.active
-            old_sheet = book.sheet_by_index(0)
+        layers_count = len(layers)
 
-            for row_idx in range(old_sheet.nrows):
-                row = [old_sheet.cell_value(row_idx, col) for col in range(old_sheet.ncols)]
-                sheet.append(row)
+        if layers_count >= max_upload:
+            raise UploadParallelismLimitException(
+                detail=f"The number of layers in the XLSX {layers_count} is greater than "
+                f"the max parallel upload permitted: {max_upload} "
+                f"please upload a smaller file"
+            )
+        elif layers_count + actual_upload >= max_upload:
+            raise UploadParallelismLimitException(
+                detail=f"With the provided XLSX, the number of max parallel upload will exceed the limit of {max_upload}"
+            )
 
-            workbook.save(temp.name)
-            temp.flush()
-
-            with open(temp.name, "rb") as converted:
-                content = converted.read()
-                file_io = io.BytesIO(content)
-                file_io.name = temp.name
-                size = len(content)
-                uploaded_file = InMemoryUploadedFile(
-                    file_io,
-                    field_name=None,
-                    name=os.path.basename(temp.name),
-                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    size=size,
-                    charset=None,
-                )
-                uploaded_file.size = size  # Evita el NoneType
-                files["base_file"] = uploaded_file
-
-        # Validación del archivo convertido
-        try:
-            pd.read_excel(files.get("base_file"), sheet_name=None)
-        except Exception as e:
-            raise InvalidExcelException(f"Error parsing Excel file: {str(e)}")
+        schema_keys = [x.name.lower() for layer in layers for x in layer.schema]
+        geom_is_in_schema = any(
+            x in schema_keys for x in XLSXFileHandler().possible_geometry_column_name
+        )
+        has_lat = any(x in XLSXFileHandler().possible_lat_column for x in schema_keys)
+        has_long = any(x in XLSXFileHandler().possible_long_column for x in schema_keys)
 
         return True
 
@@ -136,7 +118,9 @@ class XLSXFileHandler(BaseVectorFileHandler):
         base_command = BaseVectorFileHandler.create_ogr2ogr_command(
             files, original_name, ovverwrite_layer, alternate
         )
-        return f"{base_command} -lco GEOMETRY_NAME={BaseVectorFileHandler().default_geometry_column_name}"
+        return (
+            f"{base_command} -lco GEOMETRY_NAME={BaseVectorFileHandler().default_geometry_column_name}"
+        )
 
     def create_dynamic_model_fields(
         self,
@@ -161,9 +145,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
             geom_is_in_schema = (
                 x in schema_keys for x in self.possible_geometry_column_name
             )
-            if (
-                any(geom_is_in_schema) and layer.GetGeomType() == 100
-            ):
+            if any(geom_is_in_schema) and layer.GetGeomType() == 100:
                 field_name = [
                     x for x in self.possible_geometry_column_name if x in schema_keys
                 ][0]
@@ -226,10 +208,11 @@ class XLSXFileHandler(BaseVectorFileHandler):
         layers = self.get_ogr2ogr_driver().Open(files.get("base_file"), 0)
         if not layers:
             return []
+
         return [
             {
                 "name": alternate or layer_name,
-                "crs": (self.identify_authority(_l)),
+                "crs": self.identify_authority(_l),
             }
             for _l in layers
             if self.fixup_name(_l.GetName()) == layer_name
@@ -237,7 +220,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     def identify_authority(self, layer):
         try:
-            authority_code = super().identify_authority(layer=layer)
-            return authority_code
+            return super().identify_authority(layer=layer)
         except Exception:
             return "EPSG:4326"

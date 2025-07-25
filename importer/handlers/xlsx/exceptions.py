@@ -4,6 +4,6 @@ from rest_framework import status
 
 class InvalidExcelException(APIException):
     status_code = status.HTTP_400_BAD_REQUEST
-    default_detail = "The excel file provided is invalid"
+    default_detail = "The xlsx file provided is invalid"
     default_code = "invalid_excel_file"
     category = "importer"
