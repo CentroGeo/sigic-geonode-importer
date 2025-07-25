@@ -53,7 +53,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
             "format": "vector",
             "mimeType": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
             "ext": ["xlsx"],
-            "optional": [],
+            "optional": ["sld", "xml"],
         }
 
     @staticmethod
@@ -69,14 +69,6 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     @staticmethod
     def is_valid(files, user):
-        # Forzar cálculo de tamaño si es necesario
-        base_file = files.get("base_file")
-        if hasattr(base_file, "seek") and hasattr(base_file, "tell"):
-            current = base_file.tell()
-            base_file.seek(0, 2)
-            _ = base_file.tell()
-            base_file.seek(current)
-
         BaseVectorFileHandler.is_valid(files, user)
         upload_validator = UploadLimitValidator(user)
         upload_validator.validate_parallelism_limit_per_user()
@@ -108,6 +100,11 @@ class XLSXFileHandler(BaseVectorFileHandler):
         has_lat = any(x in XLSXFileHandler().possible_lat_column for x in schema_keys)
         has_long = any(x in XLSXFileHandler().possible_long_column for x in schema_keys)
 
+        fields = (
+            XLSXFileHandler().possible_geometry_column_name
+            + XLSXFileHandler().possible_latlong_column
+        )
+
         return True
 
     def get_ogr2ogr_driver(self):
@@ -115,11 +112,17 @@ class XLSXFileHandler(BaseVectorFileHandler):
 
     @staticmethod
     def create_ogr2ogr_command(files, original_name, ovverwrite_layer, alternate):
+        """
+        Define the ogr2ogr command to be executed.
+        This is a default command that is needed to import a vector file
+        """
         base_command = BaseVectorFileHandler.create_ogr2ogr_command(
             files, original_name, ovverwrite_layer, alternate
         )
+        additional_option = ' -oo "GEOM_POSSIBLE_NAMES=geom*,the_geom*,wkt_geom" -oo "X_POSSIBLE_NAMES=x,long*" -oo "Y_POSSIBLE_NAMES=y,lat*"'
         return (
-            f"{base_command} -lco GEOMETRY_NAME={BaseVectorFileHandler().default_geometry_column_name}"
+                f"{base_command} -oo KEEP_GEOM_COLUMNS=NO -lco GEOMETRY_NAME={BaseVectorFileHandler().default_geometry_column_name} "
+                + additional_option
         )
 
     def create_dynamic_model_fields(

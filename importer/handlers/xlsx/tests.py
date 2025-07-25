@@ -8,8 +8,8 @@ from geonode.upload.api.exceptions import UploadParallelismLimitException
 from geonode.upload.models import UploadParallelismLimit
 from importer import project_dir
 from importer.handlers.common.vector import import_with_ogr2ogr
-from importer.handlers.csv.exceptions import InvalidCSVException
-from importer.handlers.csv.handler import CSVFileHandler
+from importer.handlers.xlsx.exceptions import InvalidXLSXException
+from importer.handlers.xlsx.handler import XLSXFileHandler
 from osgeo import ogr
 
 
@@ -19,7 +19,7 @@ class TestExcelHandler(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.handler = CSVFileHandler()
+        cls.handler = XLSXFileHandler()
         cls.valid_csv = f"{project_dir}/tests/fixture/valid.csv"
         cls.invalid_csv = f"{project_dir}/tests/fixture/invalid.csv"
         cls.missing_lat = f"{project_dir}/tests/fixture/missing_lat.csv"
@@ -53,7 +53,7 @@ class TestExcelHandler(TestCase):
         self.assertTupleEqual(expected, self.handler.ACTIONS["copy"])
 
     def test_is_valid_should_raise_exception_if_the_csv_is_invalid(self):
-        with self.assertRaises(InvalidCSVException) as _exc:
+        with self.assertRaises(InvalidXLSXException) as _exc:
             self.handler.is_valid(files=self.invalid_files, user=self.user)
 
         self.assertIsNotNone(_exc)
@@ -62,7 +62,7 @@ class TestExcelHandler(TestCase):
         )
 
     def test_is_valid_should_raise_exception_if_the_csv_missing_geom(self):
-        with self.assertRaises(InvalidCSVException) as _exc:
+        with self.assertRaises(InvalidXLSXException) as _exc:
             self.handler.is_valid(
                 files={"base_file": self.missing_geom}, user=self.user
             )
@@ -73,14 +73,14 @@ class TestExcelHandler(TestCase):
         )
 
     def test_is_valid_should_raise_exception_if_the_csv_missing_lat(self):
-        with self.assertRaises(InvalidCSVException) as _exc:
+        with self.assertRaises(InvalidXLSXException) as _exc:
             self.handler.is_valid(files={"base_file": self.missing_lat}, user=self.user)
 
         self.assertIsNotNone(_exc)
         self.assertTrue("Latitude is missing" in str(_exc.exception.detail))
 
     def test_is_valid_should_raise_exception_if_the_csv_missing_long(self):
-        with self.assertRaises(InvalidCSVException) as _exc:
+        with self.assertRaises(InvalidXLSXException) as _exc:
             self.handler.is_valid(
                 files={"base_file": self.missing_long}, user=self.user
             )
