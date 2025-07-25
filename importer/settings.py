@@ -26,6 +26,7 @@ SYSTEM_HANDLERS = [
 
 SIGIC_HANDLERS = [
     'importer.handlers.xlsx.handler.XLSXFileHandler',
+    'importer.handlers.xls.handler.XLSFileHandler',
 ]
 
 SYSTEM_HANDLERS += SIGIC_HANDLERS
