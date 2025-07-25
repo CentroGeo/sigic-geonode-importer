@@ -53,8 +53,8 @@ class XLSFileHandler(BaseVectorFileHandler):
         ),
     }
 
-    @classmethod
-    def get_file_type(cls):
+    @property
+    def supported_file_extension_config(self):
         return {
             "id": "XLS",
             "label": "Excel (XLS)",
