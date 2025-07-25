@@ -53,6 +53,16 @@ class XLSFileHandler(BaseVectorFileHandler):
         ),
     }
 
+    @classmethod
+    def get_file_type(cls):
+        return {
+            "id": "XLS",
+            "label": "Excel (XLS)",
+            "format": "XLS",
+            "mimetype": "application/vnd.ms-excel",
+            "extension": ".xls"
+        }
+
     @staticmethod
     def is_valid(files, user):
         """
