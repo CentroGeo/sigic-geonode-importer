@@ -136,14 +136,27 @@ class XLSXFileHandler(BaseVectorFileHandler):
         )
         return tasks
 
-    def create_dynamic_model_fields(self, layer, name=None):
+    def create_dynamic_model_fields(
+        self,
+        layer: str,
+        dynamic_model_schema: ModelSchema,
+        overwrite: bool,
+        execution_id: str,
+        layer_name: str,
+    ):
         """
-        Tries to infer geometry from columns if not detected natively
+        Inspects the sheet (layer) and generates field structure + inferred geometry
         """
+
         geom_type = None
         lat_field = lon_field = None
 
-        layer_defn = layer.GetLayerDefn()
+        ds = self.get_ogr2ogr_driver().Open(self.files.get("base_file"))
+        ogr_layer = ds.GetLayerByName(layer)
+        if not ogr_layer:
+            raise Exception(f"Layer '{layer}' not found in the XLSX file")
+
+        layer_defn = ogr_layer.GetLayerDefn()
         field_names = [layer_defn.GetFieldDefn(i).GetNameRef().lower() for i in range(layer_defn.GetFieldCount())]
 
         for lat_candidate in ["lat", "latitude", "y"]:
