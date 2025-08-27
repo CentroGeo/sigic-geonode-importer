@@ -271,9 +271,7 @@ class BaseRasterFileHandler(BaseHandler):
                 overwrite_existing_layer=should_be_overwritten,
             ):
                 workspace = DataPublisher(None).workspace
-                user_datasets = Dataset.objects.filter(
-                    owner=_exec.user, alternate=f"{workspace.name}:{layer_name}"
-                )
+                user_datasets = Dataset.objects.filter(alternate=f"{workspace.name}:{layer_name}")
 
                 dataset_exists = user_datasets.exists()
 
