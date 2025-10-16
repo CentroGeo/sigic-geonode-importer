@@ -21,7 +21,7 @@ from importer.handlers.gpkg.tasks import SingleMessageErrorHandler
 from importer.handlers.utils import (
     GEOM_TYPE_MAPPING,
     STANDARD_TYPE_MAPPING,
-    drop_dynamic_model_schema,
+    drop_dynamic_model_schema, normalize_field_name,
 )
 from geonode.resource.manager import resource_manager
 from geonode.resource.models import ExecutionRequest
@@ -507,7 +507,7 @@ class BaseVectorFileHandler(BaseHandler):
     ):
         # retrieving the field schema from ogr2ogr and converting the type to Django Types
         layer_schema = [
-            {"name": x.name.lower(), "class_name": self._get_type(x), "null": True}
+            {"name": normalize_field_name(x.name), "class_name": self._get_type(x), "null": True}
             for x in layer.schema
         ]
         if (

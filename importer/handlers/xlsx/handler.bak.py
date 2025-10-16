@@ -9,7 +9,7 @@ from celery import group
 from geonode.base.models import ResourceBase
 from dynamic_models.models import ModelSchema
 from importer.handlers.common.vector import BaseVectorFileHandler
-from importer.handlers.utils import GEOM_TYPE_MAPPING
+from importer.handlers.utils import GEOM_TYPE_MAPPING, normalize_field_name
 from importer.utils import ImporterRequestAction as ira
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
                 detail=f"With the provided XLSX, the number of max parallel upload will exceed the limit of {max_upload}"
             )
 
-        schema_keys = [x.name.lower() for layer in layers for x in layer.schema]
+        schema_keys = [normalize_field_name(x.name) for layer in layers for x in layer.schema]
         geom_is_in_schema = any(
             x in schema_keys for x in XLSXFileHandler().possible_geometry_column_name
         )
@@ -173,7 +173,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
         layer_name: str,
     ):
         layer_schema = [
-            {"name": x.name.lower(), "class_name": self._get_type(x), "null": True}
+            {"name": normalize_field_name(x.name), "class_name": self._get_type(x), "null": True}
             for x in layer.schema
         ]
 
