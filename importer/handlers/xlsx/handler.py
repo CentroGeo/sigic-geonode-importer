@@ -13,7 +13,7 @@ from dynamic_models.models import ModelSchema
 
 from importer.celery_tasks import create_dynamic_structure
 from importer.handlers.common.vector import BaseVectorFileHandler
-from importer.handlers.utils import GEOM_TYPE_MAPPING
+from importer.handlers.utils import GEOM_TYPE_MAPPING, normalize_field_name
 from importer.utils import ImporterRequestAction as ira
 
 logger = logging.getLogger(__name__)
@@ -157,7 +157,7 @@ class XLSXFileHandler(BaseVectorFileHandler):
             raise Exception(f"Layer '{layer}' not found in the XLSX file")
 
         layer_defn = ogr_layer.GetLayerDefn()
-        field_names = [layer_defn.GetFieldDefn(i).GetNameRef().lower() for i in range(layer_defn.GetFieldCount())]
+        field_names = [normalize_field_name(layer_defn.GetFieldDefn(i).GetNameRef().lower()) for i in range(layer_defn.GetFieldCount())]
 
         for lat_candidate in ["lat", "latitude", "y"]:
             if lat_candidate in field_names:

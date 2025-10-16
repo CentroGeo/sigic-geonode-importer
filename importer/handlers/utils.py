@@ -9,6 +9,8 @@ from django.utils.module_loading import import_string
 from uuid import UUID
 
 from importer.publisher import DataPublisher
+import re
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
@@ -138,3 +140,21 @@ def evaluate_error(celery_task, exc, task_id, args, kwargs, einfo):
     orchestrator.evaluate_execution_progress(
         get_uuid(args), _log=str(exc.detail if hasattr(exc, "detail") else exc.args[0])
     )
+
+
+def normalize_field_name(name: str) -> str:
+    """
+    Elimina acentos, espacios, símbolos y deja solo letras, números y guiones bajos.
+    """
+    # Quita acentos y diacríticos
+    name = (
+        unicodedata.normalize("NFKD", name)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    # Reemplaza espacios y caracteres no válidos por "_"
+    name = re.sub(r"[^0-9a-zA-Z_]", "_", name)
+    # Asegura que no empiece por número y minúsculas
+    if name and name[0].isdigit():
+        name = f"f_{name}"
+    return name.lower()
