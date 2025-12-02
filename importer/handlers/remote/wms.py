@@ -118,13 +118,34 @@ class RemoteWMSResourceHandler(BaseRemoteResourceHandler):
         custom={},
     ):
         """
-        Use the default RemoteResourceHandler to create the geonode resource
-        after that, we assign the bbox and re-generate the thumbnail
+        Crea el recurso remoto en GeoNode y luego:
+        - Ajusta el owner al usuario que ejecutó el import
+        - Opcional: ajusta poc y metadata_author a ese mismo usuario
+        - Asigna bbox y regenera thumbnail
         """
         resource = super().create_geonode_resource(
             layer_name, alternate, execution_id, Dataset, asset, custom=custom,
         )
         _exec = orchestrator.get_execution_object(execution_id)
+
+        user = _exec.user
+
+        # 3) Forzar owner al usuario que hizo la publicación
+        if user and resource.owner_id != user.id:
+            resource.owner = user
+            resource.save(update_fields=["owner"])
+
+            # Opcional pero muy recomendable: alinear contactos
+            try:
+                # Si el modelo tiene estos M2M (Dataset via ResourceBase)
+                rb = resource if isinstance(resource, ResourceBase) else resource.resourcebase_ptr
+                rb.poc.set([user])
+                rb.metadata_author.set([user])
+            except Exception:
+                # Si por alguna razón no existen, no tronamos
+                pass
+
+
         remote_bbox = _exec.input_params.get("bbox")
         if remote_bbox:
             resource.set_bbox_polygon(remote_bbox, "EPSG:4326")
