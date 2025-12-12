@@ -21,8 +21,8 @@ import os
 project_dir = os.path.dirname(os.path.abspath(__file__))
 
 VERSION = (1, 1, 0)
-__version__ = ".".join([str(i) for i in VERSION])
+__version__ = "1.1.0.post1"
 __author__ = "geosolutions-it"
 __email__ = "info@geosolutionsgroup.com"
-__url__ = "https://github.com/GeoNode/geonode-importer"
+__url__ = "https://github.com/CentroGeo/sigic-geonode-importer"
 default_app_config = "importer.apps.ImporterConfig"
