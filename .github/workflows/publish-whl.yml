@@ -1,4 +1,4 @@
-name: Publish wheel to GitHub Packages
+name: Build & Release wheel
 
 on:
   push:
@@ -6,50 +6,35 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  publish:
+  build-release:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
+          pip install build
 
       - name: Build wheel
-        run: python -m build
-
-      - name: Validate wheel version vs tag
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          WHEEL_VERSION=$(ls dist/*.whl | sed -E 's/.*-([0-9][^-]*)-py.*/\1/')
+          python -m build --wheel
+          ls -l dist
 
-          echo "🔎 Tag version   : $TAG_VERSION"
-          echo "🔎 Wheel version : $WHEEL_VERSION"
-
-          if [ "$TAG_VERSION" != "$WHEEL_VERSION" ]; then
-            echo "❌ Tag y wheel NO coinciden."
-            exit 1
-          fi
-
-          echo "✅ Tag y wheel coinciden"
-
-      - name: Publish to GitHub Packages
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          twine upload \
-            --repository-url https://pypi.pkg.github.com/CentroGeo/sigic-geonode-importer \
-            dist/*
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: dist/*.whl
