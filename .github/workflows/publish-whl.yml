@@ -51,5 +51,5 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           twine upload \
-            --repository-url https://pypi.pkg.github.com/${{ github.repository_owner }} \
+            --repository-url https://pypi.pkg.github.com/CentroGeo/sigic-geonode-importer \
             dist/*
