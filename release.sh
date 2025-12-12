@@ -164,4 +164,4 @@ git tag "$TAG"
 git push origin "$TAG"
 
 echo "🚀 Tag creado: $TAG"
-echo "📦 El workflow publicará el wheel automáticamente."
+echo "📦 El workflow publicará el wheel automáticamente"
