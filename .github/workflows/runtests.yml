@@ -3,10 +3,10 @@ name: Run test suite
 on:
   push:
     branches:
-    - masterX
+    - master
   pull_request:
     branches:
-    - masterX
+    - master
 
 jobs:
   docker:
