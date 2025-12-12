@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sigic-geonode-importer"
-version = "1.1.0.post4"
+version = "1.1.0.post5"
 description = "GeoNode Importer Django app"
 requires-python = ">=3.10,<3.11"
 dependencies = [
