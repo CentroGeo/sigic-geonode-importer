@@ -1,5 +1,8 @@
 name: Backport
 on:
+  push:
+    branches:
+    - masterX
   pull_request_target:
     types:
       - closed
