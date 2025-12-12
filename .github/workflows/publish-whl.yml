@@ -1,0 +1,54 @@
+name: Publish wheel to GitHub Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build wheel
+        run: python -m build
+
+      - name: Validate wheel version vs tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          WHEEL_VERSION=$(ls dist/*.whl | sed -E 's/.*-([0-9][^-]*)-py.*/\1/')
+
+          echo "🔎 Tag version   : $TAG_VERSION"
+          echo "🔎 Wheel version : $WHEEL_VERSION"
+
+          if [ "$TAG_VERSION" != "$WHEEL_VERSION" ]; then
+            echo "❌ Tag y wheel NO coinciden."
+            exit 1
+          fi
+
+          echo "✅ Tag y wheel coinciden"
+
+      - name: Publish to GitHub Packages
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          twine upload \
+            --repository-url https://pypi.pkg.github.com/${{ github.repository_owner }} \
+            dist/*
