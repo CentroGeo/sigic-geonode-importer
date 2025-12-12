@@ -210,4 +210,4 @@ It actually runs the tests.
 Note: the tests inside the docker environment can be run manually too
 
 ## Env File
-The `.env_test` file contains all the environment variable needed to successfully run the tests
+The `.env_test` file contains all the environment variable needed to successfully run the tests.
