@@ -38,7 +38,7 @@ jobs:
           echo "🔎 Wheel version : $WHEEL_VERSION"
 
           if [ "$TAG_VERSION" != "$WHEEL_VERSION" ]; then
-            echo "❌ Tag y wheel NO coinciden"
+            echo "❌ Tag y wheel NO coinciden."
             exit 1
           fi
 
